@@ -10,6 +10,7 @@
 
 import os.path
 import os
+import re
 
 is_define = False
 
@@ -37,21 +38,24 @@ def cache_souce_function( key, path ):
     
 	return buffer
 
+def func_exist( buf, key ):
+	# check if func exists.
+	if len(buf):
+		for line in buf:
+			if key in line:
+				return True
+	return False
+
 def sync_func_declare(buffer, key, path):
 
 	if os.path.isfile(path):
 		file = open(path, "r")
 		lines = file.readlines()
 		file.close()
-		found=False
 
 		# pass 1
     # check if func exists.
-		if len(lines):
-			for line in lines:
-				if key in line:
-					found = True
-					break
+		found=func_exist(buffer, key)
 
 		# pass 2 
     # create tmp file
@@ -90,44 +94,100 @@ def sync_func_declare(buffer, key, path):
 	else:
 		print "File can't be found : %s " % path
 
-def sync_func_declare(buffer, key, path)
-	if os.path.isfile(path):
-		file = open(path, "r")
-		lines = file.readlines()
-		file.close()
-		found=False
+def replace_class_name( key, ori, buf ):
+	#search function in file
+	for line in buf:
+		# :: in string
+		# ; NOT in string
+		# white space is first position
+		# this is the first line of function.
+		if ( ("::" in line) and (";" not in line) and (0 != line.index(' ')) ):
+			# get white space position
+			widx = line.index(' ')
+			widx+=1
+			# get "::" position
+			double_colon_idx = line.index('::')
+			# get sub string
+			new_class_name=line[widx:double_colon_idx]
 
-		# pass 1
-    # check if func exists.
-		if len(lines):
-			for line in lines:
-				if key in line:
-					found = True
-					break
+			widx=ori.index(' ')
+			widx+=1
+			double_colon_idx = ori.index('::')
+			old_class_name=ori[widx:double_colon_idx]
+	
+			new_func = re.sub(old_class_name ,new_class_name, ori)
+			return new_func
+
+def sync_func_define(buf, key, path):
+
+	if os.path.isfile(path):
+		file = open(path, 'r')
+		lines = file.readlines()
+
+		#Pass 1 
+		#Check if function is in file
+		found=func_exist(lines, key)
+
+		#Pass 2
+		#Create tmp file and record.
+		tmpfile=open("tmp.cpp", "w+")
+
+		# record class name, replace class name to buffer
+		buf[0] = replace_class_name(key, buf[0], lines)
+
+		# if function already exist, replace to origin file
+		# else put this function to the end of file.
 
 		if found:
-			print "%s is in file"
+			func_is_fund=False
+			func_scope_start=False
+			func_scope_end=False
 
-		
+			print "Func exists"
+			for line in lines:
+				skip = False
+
+				if (key in line) and (not func_is_fund):
+					func_is_fund=True
+					func_scope_start=True
+					skip = True
+					for buf_line in buf:
+						tmpfile.write(buf_line)
+
+				if func_scope_start and (not func_scope_end ):
+					skip = True
+					if ("}" in line) and (0 == line.index("}")):
+						func_scope_end = True
+					
+				if not skip:
+					tmpfile.write(line)
+		else:
+			# record class name, replace class name to buffer
+			# put this function to the end of file.
+			for line in lines:
+				tmpfile.write(line)
+			tmpfile.write("\n")
+			for line in buf:
+				tmpfile.write(line)
+		tmpfile.close()
+		os.rename("tmp.cpp", path)
+
 # main
 
 #open source file and copy source function by searchkey
-buffer = ""
+buf = ""
 searchKey = ""
 
 # sync .h files
 sourcePath = ""
 targetPath = ""
-
 #sync .cpp files
 
 
-buffer = cache_souce_function(searchKey, sourcePath)
+buf = cache_souce_function(searchKey, sourcePath)
 
 if is_define:
-	sync_func_declare( buffer, searchKey, targetPath)
+	sync_func_declare( buf, searchKey, targetPath)
 else:
-	sync_func_declare( buffer, searchKey, targetPath)
- 
-
+	sync_func_define (buf, searchKey, targetPath)
 
